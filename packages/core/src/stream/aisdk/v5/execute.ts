@@ -6,6 +6,7 @@ import { prepareJsonSchemaForOpenAIStrictMode } from '@mastra/schema-compat';
 import type { StructuredOutputOptions } from '../../../agent/types';
 import type { ModelMethodType } from '../../../llm/model/model.loop.types';
 import type { MastraLanguageModel, SharedProviderOptions } from '../../../llm/model/shared.types';
+import { createTimeoutAbortSignal, isMastraTimeoutError, raceAgainstAbort } from '../../../loop/timeout';
 import type { LoopOptions } from '../../../loop/types';
 import { getResponseFormat } from '../../base/schema';
 import type { LanguageModelV2StreamResult, OnResult } from '../../types';
@@ -144,44 +145,59 @@ export function execute<OUTPUT = undefined>({
     onResult,
     createStream: async () => {
       try {
-        const filteredModelSettings = omit(modelSettings || {}, ['maxRetries', 'headers']);
-        const abortSignal = options?.abortSignal;
+        const filteredModelSettings = omit(modelSettings || {}, ['maxRetries', 'headers', 'timeout']);
+        const timeoutSignal = createTimeoutAbortSignal({
+          parentSignal: options?.abortSignal,
+          timeoutMs: modelSettings?.timeout?.stepMs,
+          timeoutType: 'step',
+        });
+        const abortSignal = timeoutSignal.signal;
 
         const pRetry = await import('p-retry');
-        return await pRetry.default(
-          async () => {
-            const fn = (methodType === 'stream' ? model.doStream : model.doGenerate).bind(model);
+        try {
+          return await pRetry.default(
+            async () => {
+              const fn = (methodType === 'stream' ? model.doStream : model.doGenerate).bind(model);
 
-            // Cast needed: V2 and V3 call options are structurally compatible but typed differently
-            // (e.g., tool types differ: V2 uses 'provider-defined', V3 uses 'provider')
-            const streamResult = await (fn as Function)({
-              ...toolsAndToolChoice,
-              prompt,
-              providerOptions: providerOptionsToUse,
-              abortSignal,
-              includeRawChunks,
-              responseFormat:
-                structuredOutputMode === 'direct' && !structuredOutput?.jsonPromptInjection
-                  ? responseFormat
-                  : undefined,
-              ...filteredModelSettings,
-              headers,
-            });
+              // Cast needed: V2 and V3 call options are structurally compatible but typed differently
+              // (e.g., tool types differ: V2 uses 'provider-defined', V3 uses 'provider')
+              const streamResult = await raceAgainstAbort(
+                (fn as Function)({
+                  ...toolsAndToolChoice,
+                  prompt,
+                  providerOptions: providerOptionsToUse,
+                  abortSignal,
+                  includeRawChunks,
+                  responseFormat:
+                    structuredOutputMode === 'direct' && !structuredOutput?.jsonPromptInjection
+                      ? responseFormat
+                      : undefined,
+                  ...filteredModelSettings,
+                  headers,
+                }),
+                abortSignal,
+              );
 
-            // We have to cast this because doStream is missing the warnings property in its return type even though it exists
-            return streamResult as unknown as LanguageModelV2StreamResult;
-          },
-          {
-            retries: modelSettings?.maxRetries ?? 2,
-            signal: abortSignal,
-            shouldRetry(context) {
-              if (APICallError.isInstance(context.error)) {
-                return context.error.isRetryable;
-              }
-              return true;
+              // We have to cast this because doStream is missing the warnings property in its return type even though it exists
+              return streamResult as unknown as LanguageModelV2StreamResult;
             },
-          },
-        );
+            {
+              retries: modelSettings?.maxRetries ?? 2,
+              signal: abortSignal,
+              shouldRetry(context) {
+                if (isMastraTimeoutError(context.error)) {
+                  return false;
+                }
+                if (APICallError.isInstance(context.error)) {
+                  return context.error.isRetryable;
+                }
+                return true;
+              },
+            },
+          );
+        } finally {
+          timeoutSignal.cleanup();
+        }
       } catch (error) {
         if (shouldThrowError) {
           throw error;
