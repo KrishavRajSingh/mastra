@@ -16,7 +16,7 @@ export function isMastraTimeoutError(error: unknown): error is MastraTimeoutErro
   return error instanceof MastraTimeoutError;
 }
 
-function getAbortReason(signal: AbortSignal): unknown {
+export function getAbortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
