@@ -7,6 +7,7 @@ import { EntityType } from '../../observability';
 import type { CorrelationContext } from '../../observability';
 import type { MastraCompositeStore } from '../../storage/base';
 import type { TargetType } from '../../storage/types';
+import type { StepResult } from '../../workflows';
 import type { ScorerResult } from './types';
 
 function toScorerTargetEntityType(targetType?: TargetType): EntityType | undefined {
@@ -68,6 +69,17 @@ async function extractTrajectoryFromStorage(
 }
 
 /**
+ * Workflow-specific data forwarded to scorers so they can inspect step-level
+ * input/output and the executed step path. Surfaced via `targetMetadata` on
+ * the scorer run so existing scorer signatures stay unchanged.
+ */
+export interface WorkflowScorerData {
+  stepResults?: Record<string, StepResult<any, any, any, any>>;
+  stepExecutionPath?: string[];
+  spanId?: string | null;
+}
+
+/**
  * Run all scorers for a single item result.
  * Errors are isolated per scorer - one failing scorer doesn't affect others.
  * Trajectory scorers (scorer.type === 'trajectory') receive a pre-extracted
@@ -85,6 +97,7 @@ export async function runScorersForItem(
   scorerInput?: ScorerRunInputForAgent,
   scorerOutput?: ScorerRunOutputForAgent,
   traceId?: string,
+  workflowData?: WorkflowScorerData,
 ): Promise<ScorerResult[]> {
   if (scorers.length === 0) return [];
 
@@ -119,6 +132,7 @@ export async function runScorersForItem(
         traceId,
         targetCorrelationContext,
         scorer.type === 'trajectory' ? trajectoryOutput : undefined,
+        workflowData,
       );
 
       // Persist score if storage available and score was computed
@@ -193,10 +207,24 @@ async function runScorerSafe(
   targetTraceId?: string,
   targetCorrelationContext?: CorrelationContext,
   trajectoryOutput?: Trajectory,
+  workflowData?: WorkflowScorerData,
 ): Promise<{ result: ScorerResult; promptMetadata: ScorerPromptMetadata }> {
   try {
     const effectiveOutput = trajectoryOutput ?? scorerOutput ?? output;
     const effectiveScope = trajectoryOutput ? 'trajectory' : 'span';
+
+    // Surface step-level data via targetMetadata so workflow scorers can
+    // inspect per-step input/output without changing the scorer signature.
+    // Trajectory scorers already receive the Trajectory as their output, so
+    // the step metadata is only relevant for non-trajectory workflow scorers.
+    const targetMetadata: Record<string, unknown> | undefined =
+      !trajectoryOutput && workflowData && (workflowData.stepResults || workflowData.stepExecutionPath)
+        ? {
+            ...(workflowData.stepResults ? { stepResults: workflowData.stepResults } : {}),
+            ...(workflowData.stepExecutionPath ? { stepExecutionPath: workflowData.stepExecutionPath } : {}),
+          }
+        : undefined;
+
     const scoreResult: unknown = await scorer.run({
       input: scorerInput ?? item.input,
       output: effectiveOutput,
@@ -205,7 +233,9 @@ async function runScorerSafe(
       targetScope: effectiveScope,
       targetEntityType: toScorerTargetEntityType(targetType),
       targetTraceId,
+      ...(workflowData?.spanId ? { targetSpanId: workflowData.spanId } : {}),
       ...(targetCorrelationContext ? { targetCorrelationContext } : {}),
+      ...(targetMetadata ? { targetMetadata } : {}),
     });
 
     // Extract fields with typeof guards — scorer run result types use complex

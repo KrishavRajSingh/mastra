@@ -368,6 +368,15 @@ export async function runExperiment(mastra: Mastra, config: ExperimentConfig): P
         };
 
         // Run scorers (inline, after target completes)
+        const workflowData =
+          execResult.stepResults || execResult.stepExecutionPath
+            ? {
+                stepResults: execResult.stepResults,
+                stepExecutionPath: execResult.stepExecutionPath,
+                spanId: execResult.spanId,
+              }
+            : undefined;
+
         const itemScores = await runScorersForItem(
           scorers,
           item,
@@ -380,6 +389,7 @@ export async function runExperiment(mastra: Mastra, config: ExperimentConfig): P
           execResult.scorerInput,
           execResult.scorerOutput,
           execResult.traceId ?? undefined,
+          workflowData,
         );
 
         // Persist result with scores (if storage available)
