@@ -7,6 +7,7 @@
  *   Part B — trajectory scorers received raw MastraDBMessage[] instead of Trajectory
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod';
 import type { MastraScorer } from '../../../evals/base';
 import type { Trajectory } from '../../../evals/types';
 import type { Mastra } from '../../../mastra';
@@ -14,6 +15,7 @@ import type { MastraCompositeStore, StorageDomains } from '../../../storage/base
 import { DatasetsInMemory } from '../../../storage/domains/datasets/inmemory';
 import { ExperimentsInMemory } from '../../../storage/domains/experiments/inmemory';
 import { InMemoryDB } from '../../../storage/domains/inmemory-db';
+import { createStep, createWorkflow } from '../../../workflows';
 import { runExperiment } from '../index';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ describe('trajectory scorer dispatch', () => {
   });
 });
 
-describe('steps scorer config — not yet supported', () => {
+describe('steps scorer config — per-step dispatch', () => {
   let storage: MastraCompositeStore;
   let datasetsStorage: DatasetsInMemory;
   let mastra: Mastra;
@@ -183,20 +185,112 @@ describe('steps scorer config — not yet supported', () => {
 
     const dataset = await datasetsStorage.createDataset({ name: 'Test', description: '' });
     datasetId = dataset.id;
-    await datasetsStorage.addItem({ datasetId, input: 'Hello' });
+    await datasetsStorage.addItem({ datasetId, input: { prompt: 'Hello' } });
   });
 
-  it('throws STEP_SCORERS_NOT_SUPPORTED when steps config is passed', async () => {
-    const scorer = createAgentScorer('step-scorer');
+  /** Build a real workflow with two steps so step results actually populate. */
+  function buildTwoStepWorkflow() {
+    const inputSchema = z.object({ prompt: z.string() });
+    const midSchema = z.object({ upper: z.string() });
+    const outputSchema = z.object({ text: z.string() });
 
-    await expect(
-      runExperiment(mastra, {
-        datasetId,
-        targetType: 'agent',
-        targetId: 'test-agent',
-        scorers: { steps: { 'my-step': [scorer] } } as any,
-      }),
-    ).rejects.toMatchObject({ id: 'STEP_SCORERS_NOT_SUPPORTED' });
+    const upperStep = createStep({
+      id: 'upper',
+      inputSchema,
+      outputSchema: midSchema,
+      execute: async ({ inputData }) => ({ upper: inputData.prompt.toUpperCase() }),
+    });
+
+    const echoStep = createStep({
+      id: 'echo',
+      inputSchema: midSchema,
+      outputSchema,
+      execute: async ({ inputData }) => ({ text: `echo:${inputData.upper}` }),
+    });
+
+    return createWorkflow({ id: 'two-step-wf', inputSchema, outputSchema }).then(upperStep).then(echoStep).commit();
+  }
+
+  it('runs per-step scorers against each step output', async () => {
+    const workflow = buildTwoStepWorkflow();
+    (mastra.getWorkflowById as ReturnType<typeof vi.fn>).mockReturnValue(workflow);
+    (mastra.getWorkflow as ReturnType<typeof vi.fn>).mockReturnValue(workflow);
+
+    const upperScorer: MastraScorer<any, any, any, any> = {
+      id: 'upper-scorer',
+      name: 'upper-scorer',
+      description: '',
+      type: 'agent' as const,
+      run: vi.fn().mockResolvedValue({ score: 1, reason: 'ok' }),
+    } as any;
+
+    const echoScorer: MastraScorer<any, any, any, any> = {
+      id: 'echo-scorer',
+      name: 'echo-scorer',
+      description: '',
+      type: 'agent' as const,
+      run: vi.fn().mockResolvedValue({ score: 0.5, reason: 'echoed' }),
+    } as any;
+
+    const result = await runExperiment(mastra, {
+      datasetId,
+      targetType: 'workflow',
+      targetId: 'two-step-wf',
+      scorers: { steps: { upper: [upperScorer], echo: [echoScorer] } } as any,
+    });
+
+    expect(result.status).toBe('completed');
+
+    // Each step scorer should have been invoked once, with the step's output as run.output.
+    expect(upperScorer.run).toHaveBeenCalledOnce();
+    expect(echoScorer.run).toHaveBeenCalledOnce();
+
+    const upperCall = (upperScorer.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(upperCall?.output).toEqual({ upper: 'HELLO' });
+
+    const echoCall = (echoScorer.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(echoCall?.output).toEqual({ text: 'echo:HELLO' });
+
+    // Scores show up on the item, tagged with their step.
+    const scores = result.results[0]?.scores ?? [];
+    const upperResult = scores.find(s => s.scorerId === 'upper-scorer');
+    const echoResult = scores.find(s => s.scorerId === 'echo-scorer');
+    expect(upperResult?.score).toBe(1);
+    expect(upperResult?.targetScope).toBe('step');
+    expect(upperResult?.stepId).toBe('upper');
+    expect(echoResult?.score).toBe(0.5);
+    expect(echoResult?.stepId).toBe('echo');
+  });
+
+  it('skips step scorers for steps that did not run successfully', async () => {
+    const workflow = buildTwoStepWorkflow();
+    (mastra.getWorkflowById as ReturnType<typeof vi.fn>).mockReturnValue(workflow);
+    (mastra.getWorkflow as ReturnType<typeof vi.fn>).mockReturnValue(workflow);
+
+    const missingScorer: MastraScorer<any, any, any, any> = {
+      id: 'missing-scorer',
+      name: 'missing-scorer',
+      description: '',
+      type: 'agent' as const,
+      run: vi.fn(),
+    } as any;
+
+    const result = await runExperiment(mastra, {
+      datasetId,
+      targetType: 'workflow',
+      targetId: 'two-step-wf',
+      scorers: { steps: { 'no-such-step': [missingScorer] } } as any,
+    });
+
+    expect(result.status).toBe('completed');
+    // Scorer should never have been called for a step that doesn't exist.
+    expect(missingScorer.run).not.toHaveBeenCalled();
+
+    // Surface as an error result so callers can see the skip.
+    const scores = result.results[0]?.scores ?? [];
+    const missing = scores.find(s => s.scorerId === 'missing-scorer');
+    expect(missing?.score).toBeNull();
+    expect(missing?.error).toMatch(/no-such-step/);
   });
 });
 

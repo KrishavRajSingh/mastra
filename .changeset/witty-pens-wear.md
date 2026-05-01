@@ -14,3 +14,5 @@ await dataset.startExperiment({ scorers: [orderScorer] }) // run.output.steps wa
 
 await dataset.startExperiment({ scorers: [orderScorer] })
 await dataset.startExperiment({ scorers: { agent: [accuracyScorer], trajectory: [orderScorer] } })
+
+Per-step scorers are now also supported for workflow targets, matching `runEvals`. Pass `scorers: { workflow: [...], steps: { stepId: [...] }, trajectory: [...] }` to score individual workflow steps with their own scorers; results are tagged with `targetScope: 'step'` and the originating `stepId`.

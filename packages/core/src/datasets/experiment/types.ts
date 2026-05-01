@@ -127,6 +127,14 @@ export interface ScorerResult {
   reason: string | null;
   /** Error message if scorer failed */
   error: string | null;
+  /**
+   * Scope this score targets. Mirrors the dispatch in runEvals so consumers can
+   * differentiate workflow-level, per-step, and trajectory scores in the flat
+   * `scores` array. Defaults to 'span' when omitted.
+   */
+  targetScope?: 'span' | 'trajectory' | 'step';
+  /** ID of the workflow step this score targets (only set when targetScope === 'step'). */
+  stepId?: string;
 }
 
 /**
