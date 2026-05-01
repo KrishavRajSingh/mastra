@@ -128,12 +128,19 @@ export interface ScorerResult {
   /** Error message if scorer failed */
   error: string | null;
   /**
-   * Scope this score targets. Mirrors the dispatch in runEvals so consumers can
-   * differentiate workflow-level, per-step, and trajectory scores in the flat
-   * `scores` array. Defaults to 'span' when omitted.
+   * Scope this score targets. Mirrors the canonical `ScorerTargetScope`
+   * taxonomy from observability so consumers can differentiate span-level
+   * (agent/workflow/step) and trajectory scores in the flat `scores` array.
+   * Defaults to 'span' when omitted.
    */
-  targetScope?: 'span' | 'trajectory' | 'step';
-  /** ID of the workflow step this score targets (only set when targetScope === 'step'). */
+  targetScope?: 'span' | 'trajectory';
+  /**
+   * ID of the workflow step this score targets. Only set for per-step
+   * dispatch (`scorers: { steps: { ... } }`). Step scores keep
+   * `targetScope: 'span'` and use `stepId` to identify the step, matching
+   * how `runEvals` encodes step identity via `targetEntityType` +
+   * `targetMetadata`.
+   */
   stepId?: string;
 }
 

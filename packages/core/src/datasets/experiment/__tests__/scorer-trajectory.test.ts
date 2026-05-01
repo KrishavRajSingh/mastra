@@ -251,14 +251,17 @@ describe('steps scorer config — per-step dispatch', () => {
     const echoCall = (echoScorer.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(echoCall?.output).toEqual({ text: 'echo:HELLO' });
 
-    // Scores show up on the item, tagged with their step.
+    // Scores show up on the item, tagged with their step. Per-step scores
+    // keep targetScope='span' (matching runEvals + the canonical
+    // ScorerTargetScope taxonomy) and identify their step via stepId.
     const scores = result.results[0]?.scores ?? [];
     const upperResult = scores.find(s => s.scorerId === 'upper-scorer');
     const echoResult = scores.find(s => s.scorerId === 'echo-scorer');
     expect(upperResult?.score).toBe(1);
-    expect(upperResult?.targetScope).toBe('step');
+    expect(upperResult?.targetScope).toBe('span');
     expect(upperResult?.stepId).toBe('upper');
     expect(echoResult?.score).toBe(0.5);
+    expect(echoResult?.targetScope).toBe('span');
     expect(echoResult?.stepId).toBe('echo');
   });
 

@@ -325,9 +325,11 @@ export function resolveStepScorers(
 /**
  * Run step-scoped scorers for a single workflow item. Mirrors the per-step
  * dispatch in `runEvals`: each scorer runs against `stepResult.payload` and
- * `stepResult.output`, with `targetScope: 'step'` and
- * `targetEntityType: WORKFLOW_STEP`. Steps whose result is missing or did not
- * succeed are silently skipped — matching `runEvals` behaviour.
+ * `stepResult.output`, with `targetScope: 'span'` and
+ * `targetEntityType: WORKFLOW_STEP`. The returned `ScorerResult` carries the
+ * originating `stepId` so callers can disambiguate per-step results in the
+ * flat `scores` array. Steps whose result is missing or did not succeed
+ * surface as an error `ScorerResult` rather than disappearing silently.
  *
  * Errors are isolated per scorer (consistent with `runScorersForItem`); a
  * failing scorer produces a `ScorerResult` with `error` set, not a throw.
@@ -364,7 +366,7 @@ export async function runStepScorersForItem(
           score: null,
           reason: null,
           error: `Step "${stepId}" did not produce a successful output (status: ${stepResult?.status ?? 'missing'})`,
-          targetScope: 'step',
+          targetScope: 'span',
           stepId,
         });
       }
@@ -403,7 +405,7 @@ export async function runStepScorersForItem(
               score: null,
               reason: null,
               error: `Scorer ${scorer.name} (${scorer.id}) returned invalid result on step ${stepId}`,
-              targetScope: 'step' as const,
+              targetScope: 'span' as const,
               stepId,
             };
           }
@@ -448,7 +450,7 @@ export async function runStepScorersForItem(
             score,
             reason,
             error: null,
-            targetScope: 'step' as const,
+            targetScope: 'span' as const,
             stepId,
           };
         } catch (error) {
@@ -458,7 +460,7 @@ export async function runStepScorersForItem(
             score: null,
             reason: null,
             error: error instanceof Error ? error.message : String(error),
-            targetScope: 'step' as const,
+            targetScope: 'span' as const,
             stepId,
           };
         }
@@ -477,7 +479,7 @@ export async function runStepScorersForItem(
           score: null,
           reason: null,
           error: String(s.reason),
-          targetScope: 'step',
+          targetScope: 'span',
           stepId,
         });
       }
