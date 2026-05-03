@@ -153,6 +153,7 @@ export type ProviderModelsMap = {
     'qwen3.5-plus',
     'qwen3.6-27b',
     'qwen3.6-35b-a3b',
+    'qwen3.6-max-preview',
     'qwen3.6-plus',
     'qwq-plus',
   ];
