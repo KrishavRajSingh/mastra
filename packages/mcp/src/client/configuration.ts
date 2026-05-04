@@ -30,6 +30,13 @@ export interface MCPClientOptions {
   servers: Record<string, MastraMCPServerDefinition>;
   /** Optional global timeout in milliseconds for all servers (default: 60000ms) */
   timeout?: number;
+  /**
+   * Optional schema representation for MCP-sourced tool input schemas.
+   *
+   * Use `zod` in workerd/edge runtimes to avoid AJV code generation during Mastra's
+   * pre-call tool input validation. Defaults to `json-schema` for current behavior.
+   */
+  coerceSchemasTo?: 'json-schema' | 'zod';
 }
 
 /**
@@ -70,6 +77,7 @@ export class MCPClient extends MastraBase {
   private serverConfigs: Record<string, MastraMCPServerDefinition> = {};
   private id: string;
   private defaultTimeout: number;
+  private coerceSchemasTo: MCPClientOptions['coerceSchemasTo'];
   private mcpClientsById = new Map<string, InternalMastraMCPClient>();
   private disconnectPromise: Promise<void> | null = null;
 
@@ -105,6 +113,7 @@ export class MCPClient extends MastraBase {
     super({ name: 'MCPClient' });
     this.defaultTimeout = args.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC;
     this.serverConfigs = args.servers;
+    this.coerceSchemasTo = args.coerceSchemasTo;
     this.id = args.id ?? this.makeId();
 
     if (args.id) {
@@ -930,6 +939,7 @@ To fix this you have three different options:
       server: config,
       timeout: config.timeout ?? this.defaultTimeout,
       capabilities: config.capabilities,
+      coerceSchemasTo: this.coerceSchemasTo,
     });
 
     mcpClient.__setLogger(this.logger);

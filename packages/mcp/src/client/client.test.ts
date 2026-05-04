@@ -148,6 +148,55 @@ describe('InternalMastraMCPClient - jsonSchemaValidator pass-through', () => {
   });
 });
 
+describe('InternalMastraMCPClient - MCP schema coercion', () => {
+  let testServer: Awaited<ReturnType<typeof setupTestServer>>;
+  let client: InternalMastraMCPClient;
+
+  afterEach(async () => {
+    await client?.disconnect();
+    testServer?.httpServer.close();
+  });
+
+  it("coerces MCP JSON Schema input schemas to Zod when coerceSchemasTo is 'zod'", async () => {
+    testServer = await setupTestServer(false);
+    client = new InternalMastraMCPClient({
+      name: 'zod-coercion-client',
+      server: { url: testServer.baseUrl },
+      coerceSchemasTo: 'zod',
+    } as any);
+    await client.connect();
+
+    const tools = await client.tools();
+    const greetTool = tools.greet;
+
+    expect(greetTool?.inputSchema).toBeDefined();
+    expect(typeof (greetTool?.inputSchema as any).safeParse).toBe('function');
+  });
+
+  it("does not invoke Function during MCP input schema validation when coerceSchemasTo is 'zod'", async () => {
+    testServer = await setupTestServer(false);
+    client = new InternalMastraMCPClient({
+      name: 'zod-no-codegen-client',
+      server: { url: testServer.baseUrl },
+      coerceSchemasTo: 'zod',
+    } as any);
+    await client.connect();
+
+    const tools = await client.tools();
+    const greetTool = tools.greet;
+    const functionSpy = vi.spyOn(globalThis, 'Function');
+
+    try {
+      const result = await greetTool?.inputSchema?.['~standard'].validate({ name: 'Ada' });
+
+      expect(result).toEqual({ value: { name: 'Ada' } });
+      expect(functionSpy).not.toHaveBeenCalled();
+    } finally {
+      functionSpy.mockRestore();
+    }
+  });
+});
+
 describe('MastraMCPClient with Streamable HTTP', () => {
   let testServer: {
     httpServer: HttpServer;

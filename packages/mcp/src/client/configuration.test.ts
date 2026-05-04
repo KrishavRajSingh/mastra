@@ -118,4 +118,25 @@ describe('MCPClient tool discovery retries', () => {
     expect(connectSpy).toHaveBeenCalledTimes(1);
     expect(capabilities).toMatchObject(customCapabilities);
   });
+
+  it('forwards coerceSchemasTo into InternalMastraMCPClient', async () => {
+    const connectSpy = vi.spyOn(InternalMastraMCPClient.prototype, 'connect').mockResolvedValue(true);
+
+    const client = new MCPClient({
+      id: `configuration-test-${++clientId}`,
+      coerceSchemasTo: 'zod',
+      servers: {
+        weather: {
+          url: new URL('http://localhost:1234/sse'),
+        },
+      },
+    });
+
+    clients.push(client);
+
+    const internalClient = await (client as any).getConnectedClientForServer('weather');
+
+    expect(connectSpy).toHaveBeenCalledTimes(1);
+    expect((internalClient as any).coerceSchemasTo).toBe('zod');
+  });
 });

@@ -138,6 +138,15 @@ export type RequireToolApprovalFn = (ctx: RequireToolApprovalContext) => boolean
 export type RequireToolApproval = boolean | RequireToolApprovalFn;
 
 /**
+ * Controls how MCP-provided JSON Schemas are exposed to Mastra tools.
+ *
+ * - `json-schema`: Keep the current JSON Schema path, which validates through schema-compat/AJV.
+ * - `zod`: Convert MCP JSON Schemas to Zod schemas when tools are loaded. This avoids AJV codegen
+ *   during Mastra's pre-call input validation, which is required in workerd/edge runtimes.
+ */
+export type McpSchemaCoercionTarget = 'json-schema' | 'zod';
+
+/**
  * Base options common to all MCP server definitions.
  */
 export type BaseServerOptions = {
@@ -385,4 +394,6 @@ export type InternalMastraMCPClientOptions = {
   version?: string;
   /** Optional timeout in milliseconds */
   timeout?: number;
+  /** Optional MCP schema coercion target */
+  coerceSchemasTo?: McpSchemaCoercionTarget;
 };
