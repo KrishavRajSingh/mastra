@@ -182,11 +182,27 @@ describe('InternalMastraMCPClient - MCP schema coercion', () => {
     } as any);
     await client.connect();
 
-    const tools = await client.tools();
-    const greetTool = tools.greet;
+    const sdkClient = (client as any).client as Client;
+    vi.spyOn(sdkClient, 'listTools').mockResolvedValue({
+      tools: [
+        {
+          name: 'greet',
+          description: 'A simple greeting tool',
+          inputSchema: {
+            type: 'object' as const,
+            properties: {
+              name: { type: 'string' as const, description: 'Name to greet', default: 'World' },
+            },
+          },
+        },
+      ],
+    } as Awaited<ReturnType<Client['listTools']>>);
+
     const functionSpy = vi.spyOn(globalThis, 'Function');
 
     try {
+      const tools = await client.tools();
+      const greetTool = tools.greet;
       const result = await greetTool?.inputSchema?.['~standard'].validate({ name: 'Ada' });
 
       expect(result).toEqual({ value: { name: 'Ada' } });
