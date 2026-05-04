@@ -77,6 +77,22 @@ const mcp = new MCPClient({
 })
 ```
 
+`coerceSchemasTo` only changes how Mastra exposes MCP tool input schemas. MCP tool output schemas are validated by the MCP SDK during `Client.callTool()` using the server definition's `jsonSchemaValidator`. In Cloudflare Workers or other V8 isolates, pass a Worker-safe validator for servers that advertise `outputSchema`:
+
+```typescript
+import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker'
+
+const mcp = new MCPClient({
+  coerceSchemasTo: 'zod',
+  servers: {
+    deepwiki: {
+      url: new URL('https://mcp.deepwiki.com/mcp'),
+      jsonSchemaValidator: new CfWorkerJsonSchemaValidator(),
+    },
+  },
+})
+```
+
 ### `MastraMCPServerDefinition`
 
 Each server in the `servers` map is configured using the `MastraMCPServerDefinition` type. The transport type is detected based on the provided parameters:

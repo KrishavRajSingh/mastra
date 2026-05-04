@@ -322,7 +322,7 @@ describe('MastraMCPClient - outputSchema without structuredContent', () => {
   // return structuredContent in the response, the full CallToolResult envelope
   // should be returned as-is. We don't pass outputSchema to createTool, so
   // Zod won't strip unrecognised keys. The MCP SDK validates structuredContent
-  // against outputSchema internally via AJV.
+  // against outputSchema internally using its configured JSON Schema validator.
   let testServer: {
     httpServer: HttpServer;
     mcpServer: McpServer;
@@ -507,7 +507,8 @@ describe('MastraMCPClient - no outputSchema', () => {
 describe('MastraMCPClient - outputSchema with structuredContent', () => {
   // When a tool has an outputSchema and returns structuredContent, the
   // structuredContent is returned directly. We don't pass outputSchema to
-  // createTool so there's no Zod stripping — the MCP SDK validates via AJV.
+  // createTool so there's no Zod stripping. The MCP SDK validates structuredContent
+  // using its configured JSON Schema validator.
   let testServer: {
     httpServer: HttpServer;
     mcpServer: McpServer;

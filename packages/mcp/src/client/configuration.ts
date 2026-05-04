@@ -35,6 +35,11 @@ export interface MCPClientOptions {
    *
    * Use `zod` in workerd/edge runtimes to avoid AJV code generation during Mastra's
    * pre-call tool input validation. Defaults to `json-schema` for current behavior.
+   *
+   * This does not change MCP tool output validation. Tool outputs are validated by
+   * the MCP SDK during `Client.callTool()` using the server's `jsonSchemaValidator`.
+   * In edge runtimes, pass a Worker-safe `jsonSchemaValidator` on each server that
+   * advertises an `outputSchema`.
    */
   coerceSchemasTo?: 'json-schema' | 'zod';
 }

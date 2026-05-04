@@ -143,6 +143,9 @@ export type RequireToolApproval = boolean | RequireToolApprovalFn;
  * - `json-schema`: Keep the current JSON Schema path, which validates through schema-compat/AJV.
  * - `zod`: Convert MCP JSON Schemas to Zod schemas when tools are loaded. This avoids AJV codegen
  *   during Mastra's pre-call input validation, which is required in workerd/edge runtimes.
+ *
+ * This only affects MCP tool input schemas. MCP tool output schemas are validated by the MCP SDK
+ * during `Client.callTool()` using the server's `jsonSchemaValidator`.
  */
 export type McpSchemaCoercionTarget = 'json-schema' | 'zod';
 

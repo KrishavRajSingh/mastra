@@ -780,7 +780,8 @@ export class InternalMastraMCPClient extends MastraBase {
           inputSchema: await this.convertInputSchema(tool.inputSchema),
           strict: getMastraToolStrictMeta((tool as { _meta?: Record<string, unknown> })._meta),
           // Don't pass outputSchema to createTool — the MCP SDK's Client.callTool()
-          // already validates structuredContent against the tool's outputSchema using AJV.
+          // already validates structuredContent against the tool's outputSchema using its
+          // configured jsonSchemaValidator.
           // Passing it here causes Zod to strip unrecognized keys from the CallToolResult
           // envelope, returning {} for tools without structuredContent.
           requireApproval,
