@@ -321,7 +321,7 @@ export async function createHonoServer(
         method: 'GET',
         path: '/refresh-events',
         responseType: 'datastream-response',
-        handler: async ({ request }) => handleClientsRefreshRequest(request as Request),
+        handler: async ({ abortSignal }) => handleClientsRefreshRequest(abortSignal),
       },
       {
         method: 'POST',

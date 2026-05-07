@@ -4,16 +4,16 @@ const clients = new Set<ReadableStreamDefaultController>();
 let hotReloadDisabled = false;
 
 export function handleClientsRefresh(c: Context): Response {
-  return handleClientsRefreshRequest(c.req.raw);
+  return handleClientsRefreshRequest(c.req.raw.signal);
 }
 
-export function handleClientsRefreshRequest(request: Request): Response {
+export function handleClientsRefreshRequest(abortSignal: AbortSignal): Response {
   const stream = new ReadableStream({
     start(controller) {
       clients.add(controller);
       controller.enqueue('data: connected\n\n');
 
-      request.signal.addEventListener('abort', () => {
+      abortSignal.addEventListener('abort', () => {
         clients.delete(controller);
       });
     },
